@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoBot 9000</title>
+    <!-- Tailwind CSS CDN for quick styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for Webkit browsers (Chrome, Safari) */
+        #chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-messages::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Ensure the input field and button stay at the bottom */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 80vh; /* Adjust as needed, allows content to push down */
+        }
+        #chat-messages {
+            flex-grow: 1; /* Allows chat messages to take available space */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-r from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="chat-container bg-white rounded-lg shadow-xl p-6 w-full max-w-xl mx-auto border border-gray-200">
+        <!-- App Title -->
+        <h1 class="text-4xl font-extrabold text-center text-blue-800 mb-6 tracking-wide">EchoBot 9000</h1>
+
+        <!-- Chat Display Area -->
+        <div id="chat-messages" class="h-96 border border-gray-300 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50 scroll-smooth">
+            <!-- Messages will be dynamically added here -->
+            <div class="text-center text-gray-500 text-sm italic mt-2">
+                Welcome! Type a message to start chatting with EchoBot.
+            </div>
+        </div>
+
+        <!-- Message Input Field and Send Button -->
+        <div class="input-area flex items-center gap-2 mt-auto">
+            <input
+                type="text"
+                id="message-input"
+                placeholder="Type your message here..."
+                class="flex-grow p-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                aria-label="Message input field"
+            >
+            <button
+                id="send-button"
+                class="px-6 py-3 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 active:bg-blue-800 transition duration-150 ease-in-out text-lg font-semibold"
+                aria-label="Send message"
+            >
+                Send
+            </button>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="text-center text-sm text-gray-500 mt-3 hidden animate-pulse">
+            Thinking...
+        </div>
+    </div>
+
+    <script>
+        // Get references to DOM elements
+        const chatMessagesDiv = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        /**
+         * Displays a message in the chat interface.
+         * @param {string} sender - 'user' or 'bot'.
+         * @param {string} message - The message content.
+         * @param {string} [backendSignature] - Optional: The signature from the backend, displayed for bot messages.
+         */
+        function displayMessage(sender, message, backendSignature = null) {
+            const messageWrapper = document.createElement('div');
+            const messageBubble = document.createElement('div');
+            messageBubble.textContent = message;
+
+            // Apply distinct styling based on sender
+            if (sender === 'user') {
+                messageWrapper.className = 'flex justify-end mb-3';
+                messageBubble.className = 'bg-blue-100 text-blue-900 p-3 rounded-lg max-w-[80%] shadow-sm';
+            } else { // sender === 'bot'
+                messageWrapper.className = 'flex justify-start mb-3';
+                messageBubble.className = 'bg-gray-100 text-gray-800 p-3 rounded-lg max-w-[80%] shadow-sm';
+
+                // If it's a bot message and a signature is provided, display it
+                if (backendSignature) {
+                    const signatureSpan = document.createElement('span');
+                    signatureSpan.textContent = backendSignature;
+                    signatureSpan.className = 'block text-xs text-gray-500 mt-1 opacity-75';
+                    messageBubble.appendChild(signatureSpan);
+                }
+            }
+
+            messageWrapper.appendChild(messageBubble);
+            chatMessagesDiv.appendChild(messageWrapper);
+
+            // Scroll to the bottom to show the latest message
+            chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+        }
+
+        /**
+         * Handles sending a message to the backend API.
+         */
+        async function sendMessage() {
+            const userMessage = messageInput.value.trim();
+
+            // Do not send empty messages
+            if (!userMessage) {
+                return;
+            }
+
+            // Disable input and button, show loading indicator to provide feedback
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            loadingIndicator.classList.remove('hidden');
+
+            // Display the user's message immediately
+            displayMessage('user', userMessage);
+
+            try {
+                // Make a POST request to the Netlify Function API endpoint
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: userMessage }),
+                });
+
+                const data = await response.json();
+
+                // Check if the response was successful (HTTP status 200 OK)
+                if (response.ok) {
+                    // Display the bot's response with the backend signature
+                    displayMessage('bot', data.response, data.backendSignature);
+                } else {
+                    // Handle API errors (e.g., 400 Bad Request, 500 Internal Server Error)
+                    const errorMessage = data.error || 'An unexpected error occurred on the server.';
+                    displayMessage('bot', `Error: ${errorMessage}`);
+                    console.error('API Error:', data);
+                }
+            } catch (error) {
+                // Handle network errors (e.g., no internet connection, server unreachable)
+                displayMessage('bot', 'Network error or server unavailable. Please try again.');
+                console.error('Fetch Error:', error);
+            } finally {
+                // Always re-enable input and button, hide loading indicator
+                messageInput.value = ''; // Clear the input field
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                loadingIndicator.classList.add('hidden');
+                messageInput.focus(); // Return focus to the input field for easy continued typing
+            }
+        }
+
+        // Add event listeners
+        // Send message when the button is clicked
+        sendButton.addEventListener('click', sendMessage);
+
+        // Send message when the Enter key is pressed in the input field
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Focus the input field on page load for immediate typing
+        messageInput.focus();
+    </script>
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+</body>
+</html>
